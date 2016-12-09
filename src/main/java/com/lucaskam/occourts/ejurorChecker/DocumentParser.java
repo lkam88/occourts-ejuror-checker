@@ -29,7 +29,13 @@ public class DocumentParser {
 
             String[] split = groups.text().split(" through ");
             Integer startGroup = Integer.parseInt(split[0]);
-            Integer endGroup = Integer.parseInt(split[1]);
+            
+            Integer endGroup;
+            if (split.length > 1) {
+                endGroup = Integer.parseInt(split[1]);
+            } else {
+                endGroup = startGroup;
+            }
 
             for (int groupNumber = startGroup; groupNumber < endGroup + 1; groupNumber++) {
                 groupStatuses.put(groupNumber, instructionText);

@@ -1,43 +1,22 @@
 package com.lucaskam.occourts.ejurorChecker;
 
-import org.quartz.JobDetail;
-import org.quartz.Scheduler;
-import org.quartz.SchedulerFactory;
-import org.quartz.Trigger;
-import org.quartz.impl.StdSchedulerFactory;
-
-import static org.quartz.JobBuilder.newJob;
-import static org.quartz.SimpleScheduleBuilder.simpleSchedule;
-import static org.quartz.TriggerBuilder.newTrigger;
-
 public class Main {
-    public static String previousLastUpdated = "";
-    public static String pushoverToken;
-    public static String pushoverUser;
-
     public static void main(String[] args) throws Exception {
-        pushoverToken = System.getenv("PUSHOVER_TOKEN");
-        pushoverUser = System.getenv("PUSHOVER_USER");
-        
-        SchedulerFactory schedulerFactory = new StdSchedulerFactory();
+        String pushoverToken = System.getenv("PUSHOVER_TOKEN");
+        String pushoverUser = System.getenv("PUSHOVER_USER");
+        String justiceCenterCode = System.getenv("JUSTICE_CENTER_CODE");
+        Integer groupNumber = Integer.valueOf(System.getenv("GROUP_NUMBER"));
+        Integer intervalInMinutes = Integer.valueOf(System.getenv("INTERVAL_IN_MINUTES"));
 
-        Scheduler scheduler = schedulerFactory.getScheduler();
+        JusticeCenter justiceCenter = JusticeCenter.parseCode(justiceCenterCode);
+        DocumentRetriever documentRetriever = new DocumentRetriever();
+        DocumentParser documentParser = new DocumentParser();
+        PushOverNotificationSender groupStatusNotificationSender = new PushOverNotificationSender(pushoverToken, pushoverUser);
 
-        JobDetail jobDetail = newJob(CheckGroupStatusJob.class)
-            .withIdentity("job1", "group1")
-            .build();
 
-        Trigger trigger = newTrigger()
-            .withIdentity("trigger1", "group1")
-            .startNow()
-            .withSchedule(simpleSchedule()
-                              .withIntervalInMinutes(5)
-                              .repeatForever())
-            .build();
-
-        scheduler.scheduleJob(jobDetail, trigger);
-
-        scheduler.start();
+        CheckGroupStatusJobRunner checkGroupStatusJobRunner = new CheckGroupStatusJobRunner(documentRetriever, documentParser,
+                                                                                            groupStatusNotificationSender, groupNumber, justiceCenter, 
+                                                                                            intervalInMinutes);
+        checkGroupStatusJobRunner.run();
     }
-
 }

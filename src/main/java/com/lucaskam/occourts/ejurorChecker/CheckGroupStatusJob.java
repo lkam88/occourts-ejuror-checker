@@ -1,61 +1,69 @@
 package com.lucaskam.occourts.ejurorChecker;
 
-import com.mashape.unirest.http.HttpResponse;
-import com.mashape.unirest.http.Unirest;
-import com.mashape.unirest.http.exceptions.UnirestException;
-
 import org.jsoup.nodes.Document;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.Job;
-import org.quartz.JobDataMap;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import org.quartz.PersistJobDataAfterExecution;
 
 import java.text.ParseException;
-import java.util.Date;
 import java.util.Map;
 
 @PersistJobDataAfterExecution
 @DisallowConcurrentExecution
 public class CheckGroupStatusJob implements Job {
-    private DocumentRetriever documentRetriever;
-    private DocumentParser documentParser;
-    
-    public CheckGroupStatusJob() {
-        this.documentRetriever = new DocumentRetriever();
-        this.documentParser = new DocumentParser();
+    private final DocumentRetriever documentRetriever;
+    private final DocumentParser documentParser;
+    private final GroupStatusNotificationSender groupStatusNotificationSender;
+    private final int groupNumber;
+    private String previousLastUpdated;
+    private JusticeCenter justiceCenter;
+
+    public CheckGroupStatusJob(DocumentRetriever documentRetriever, DocumentParser documentParser, GroupStatusNotificationSender
+        groupStatusNotificationSender, int groupNumber, String previousLastUpdated, JusticeCenter justiceCenter) {
+        this.documentRetriever = documentRetriever;
+        this.documentParser = documentParser;
+        this.groupStatusNotificationSender = groupStatusNotificationSender;
+        this.groupNumber = groupNumber;
+        this.previousLastUpdated = previousLastUpdated;
+        this.justiceCenter = justiceCenter;
     }
 
     @Override
     public void execute(JobExecutionContext jobExecutionContext) throws JobExecutionException {
         try {
             doJob();
-        } catch (UnirestException e) {
-            throw new JobExecutionException("Unable to download the page.", e);
         } catch (ParseException e) {
-            throw new JobExecutionException("Unable to parse the html of returned page.", e);
+            throwException("Unable to parse the html of returned page.", e);
+        } catch (GroupStatusNotificationException e) {
+            throwException("Unable to send notification.", e);
+        } catch (DocumentRetrieverException e) {
+            throwException("Download web page to send notification.", e);
+        } catch (Exception e) {
+            throwException("Something bad happened.", e);
         }
     }
 
-    private void doJob() throws UnirestException, ParseException {
-        Document document = documentRetriever.retrieveDocument();
-        
+    public void throwException(String message, Exception causedException) throws JobExecutionException {
+        JobExecutionException jobExecutionException = new JobExecutionException(message, causedException);
+        jobExecutionException.printStackTrace();
+        throw jobExecutionException;
+    }
+
+    private void doJob() throws GroupStatusNotificationException, DocumentRetrieverException, ParseException {
+        Document document = documentRetriever.retrieveDocument(justiceCenter);
+
         String lastUpdated = documentParser.parseLastUpdated(document);
 
-        if (!lastUpdated.equals(Main.previousLastUpdated)) {
-            Main.previousLastUpdated = lastUpdated;
+        if (!lastUpdated.equals(previousLastUpdated)) {
+            previousLastUpdated = lastUpdated;
 
             Map<Integer, String> groupStatuses = documentParser.parseGroupStatuses(document);
 
-            System.out.println("sending notification");
-            HttpResponse<String> response = Unirest.post("https://api.pushover.net/1/messages.json")
-                .queryString("token", Main.pushoverToken)
-                .queryString("user", Main.pushoverUser)
-                .queryString("title", "Juror group statuses updated")
-                .queryString("message", groupStatuses.get(5003))
-                .asString();
+            groupStatusNotificationSender.sendNotification(groupStatuses.get(groupNumber));
         }
     }
+
 
 }
